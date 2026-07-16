@@ -1,0 +1,28 @@
+{
+  "name": "mistral-vibe",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+
+  // Mount the folder that contains this .devcontainer directory as the workspace,
+  // regardless of where it's checked out on the host.
+  // NOTE: no "consistency" option here - it's a Docker-Desktop-only bind mount
+  // hint on macOS and Podman rejects it.
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/${localWorkspaceFolderBasename},type=bind",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+
+  // Vibe stores its config, credentials, logs, agents, etc. under $HOME/.vibe.
+  // Keep that in a named volume so it survives container rebuilds, independent
+  // of the bind-mounted workspace.
+  "mounts": [
+    "source=mistral-vibe-home,target=/home/vscode/.vibe,type=volume"
+  ],
+
+  "remoteUser": "vscode",
+
+  "postCreateCommand": "mkdir -p /home/vscode/.vibe && chown -R vscode:vscode /home/vscode/.vibe && vibe --version",
+
+  "extensions": [
+    "mistralai.mistral-vibe"
+  ]
+}
