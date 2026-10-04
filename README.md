@@ -9,6 +9,7 @@ A pre-configured development environment for [Mistral Vibe CLI](https://github.c
 - **Mistral Vibe CLI** pre-installed
 - **Persistent state**: Vibe config, credentials, logs, and agents survive container rebuilds via a named Docker volume
 - **Git** installed for repo status access
+- **Sandbox hardening**: all Linux capabilities dropped, `no-new-privileges` set, and memory/CPU/PID limits applied so the container can only touch the bind-mounted project folder and can't starve the host
 
 ## Quick Start
 

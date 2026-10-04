@@ -20,6 +20,16 @@
 
   "remoteUser": "vscode",
 
+  // Sandbox hardening: no Linux capabilities, no privilege escalation,
+  // and resource limits so a runaway agent process can't starve the host.
+  "runArgs": [
+    "--cap-drop=ALL",
+    "--security-opt=no-new-privileges",
+    "--memory=4g",
+    "--cpus=2",
+    "--pids-limit=256"
+  ],
+
   "postCreateCommand": "mkdir -p /home/vscode/.vibe && chown -R vscode:vscode /home/vscode/.vibe && vibe --version",
 
   "customizations": {
