@@ -4,9 +4,19 @@ FROM python:3.12-slim-bookworm
 RUN groupadd --gid 1000 vscode \
     && useradd --uid 1000 --gid 1000 -m -s /bin/bash vscode
 
-# git: Vibe reads repo status for context.
+# Tooling for the agent sandbox. Client utilities only - nothing that
+# listens, nothing that elevates (sudo), nothing that talks to container
+# engines. The sandbox boundary (mounts, caps, internal network, egress
+# proxy) is enforced outside the container, so these add capability, not
+# attack surface:
+#   git        - Vibe reads repo status for context
+#   curl       - network debugging, downloads, egress verification
+#   ripgrep    - fast code search
+#   jq         - JSON inspection for agent/vibe configs and logs
+#   procps     - ps/top for process diagnostics
+#   iproute2   - ip/ss for network diagnostics (cannot reconfigure - no caps)
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git \
+    && apt-get install -y --no-install-recommends git curl ripgrep jq procps iproute2 \
     && rm -rf /var/lib/apt/lists/*
 
 # Mistral Vibe CLI (https://github.com/mistralai/mistral-vibe) - installed
