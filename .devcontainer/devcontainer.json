@@ -22,7 +22,11 @@
 
   "postCreateCommand": "mkdir -p /home/vscode/.vibe && chown -R vscode:vscode /home/vscode/.vibe && vibe --version",
 
-  "extensions": [
-    "mistralai.mistral-vibe"
-  ]
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "mistralai.mistral-vibe-code"
+      ]
+    }
+  }
 }
