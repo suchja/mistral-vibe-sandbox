@@ -159,7 +159,7 @@ fi
 is_expected_mount() {
     case "$1" in
         "$WORKSPACE_DIR"|"$WORKSPACE_DIR/.devcontainer"|\
-/home/vscode/.gitconfig|/home/vscode/.vibe|\
+/home/vscode/.gitconfig|/home/vscode/.vibe|/home/vscode/.vscode-server|\
 /vscode|/etc/hosts|/etc/hostname|/etc/resolv.conf|/etc/localtime)
             return 0 ;;
         *)  return 1 ;;
@@ -183,7 +183,7 @@ done < <(awk '
     }' /proc/mounts | sort -u)
 
 if [ "$unexpected" -eq 0 ]; then
-    ok "no unexpected mounts (allowlist: workspace, template, gitconfig, vibe volume)"
+    ok "no unexpected mounts (allowlist: workspace, template, gitconfig, vibe volume, vscode-server volume)"
 fi
 
 # --- Egress proxy (reachable with retries; its security behavior is hard) ---

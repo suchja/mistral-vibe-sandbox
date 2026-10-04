@@ -4,7 +4,7 @@ A hardened [Mistral Vibe CLI](https://github.com/mistralai/mistral-vibe) devcont
 
 ## What the sandbox enforces
 
-- **Filesystem**: only the project folder is mounted (read-write); git identity comes from a host-generated, identity-only gitconfig (`~/.vibe-gitconfig`), read-only; Vibe state lives on a per-project named volume
+- **Filesystem**: only the project folder is mounted (read-write); git identity comes from a host-generated, identity-only gitconfig (`~/.vibe-gitconfig`), read-only; Vibe state and the VS Code server live on per-project named volumes
 - **Configuration integrity**: the sandbox's own `.devcontainer` folder is shadow-mounted read-only into the container, so the agent cannot rewrite the files that define the sandbox (compose.yaml, devcontainer.json) and have the change applied on the next restart/rebuild. The startup check additionally fails on any mount outside the expected allowlist and on a competing `devcontainer.json` in the workspace root
 - **Kernel**: all Linux capabilities dropped, `no-new-privileges`, non-root user (`vscode`), memory/CPU/PID limits
 - **Network**: the sandbox sits on an internal-only Docker network with no route to the host, the LAN, or the internet. All egress goes through a hardened Squid proxy that forwards to the public internet but denies any destination in private/reserved ranges and restricts egress to research-relevant ports: plain HTTP on 80/443 and HTTPS (CONNECT) tunnels on 443 only - no SSH or arbitrary TCP tunnels out of the sandbox
@@ -92,7 +92,7 @@ sandbox-security-check
 
 ## Notes
 
-- The `.vibe` directory (Vibe state, credentials, agents) is persisted per project via a named volume derived from the compose project name. Concurrent project sandboxes do not share one credentials store; the cost is a one-time Vibe login per project.
+- The `.vibe` directory (Vibe state, credentials, agents) is persisted per project via a named volume derived from the compose project name. Concurrent project sandboxes do not share one credentials store; the cost is a one-time Vibe login per project. Caveat: the volume name derives from the compose project name, which defaults to the project folder's name - two checkouts with the SAME folder name would share state. Rename one, or set an explicit compose project name (`-p <name>` / `COMPOSE_PROJECT_NAME`) when starting.
 - `image/builds.log` is a per-host build record (UTC timestamp, structured tag, full image ID, git HEAD at build time). It is deliberately gitignored: it tracks what was built on this machine, not the toolkit's source of truth.
 - The proxy service intentionally keeps default capabilities: squid needs `setuid`/`setgid` to drop to its internal user, and dropping all capabilities makes it exit immediately. It is still contained - no published ports, reachable only from the sandbox network, config baked into the image read-only.
 - With Podman, host/LAN verification inside the sandbox uses `host.containers.internal`.

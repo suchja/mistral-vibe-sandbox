@@ -5,5 +5,7 @@
 # ship via rebuilding this image (see build.sh in the repo root).
 FROM ubuntu/squid:latest
 
-COPY squid.conf /etc/squid/squid.conf
-RUN chmod 0644 /etc/squid/squid.conf
+LABEL org.opencontainers.image.title="mistral-vibe-sandbox-proxy" \
+      org.opencontainers.image.description="Egress proxy (squid) for the Mistral Vibe devcontainer sandbox"
+
+COPY --chmod=0644 squid.conf /etc/squid/squid.conf

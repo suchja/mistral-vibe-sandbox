@@ -1,5 +1,8 @@
 FROM python:3.12-slim-bookworm
 
+LABEL org.opencontainers.image.title="mistral-vibe-sandbox" \
+      org.opencontainers.image.description="Hardened Mistral Vibe CLI agent runtime for the devcontainer sandbox"
+
 # Non-root user, uid/gid 1000 to match the conventional devcontainer default.
 RUN groupadd --gid 1000 vscode \
     && useradd --uid 1000 --gid 1000 -m -s /bin/bash vscode
@@ -24,14 +27,17 @@ RUN apt-get update \
 # mounted from a named volume by the devcontainer so it survives rebuilds.
 RUN pip install --no-cache-dir mistral-vibe
 
-# Ensure .vibe directory exists and has correct permissions
-RUN mkdir -p /home/vscode/.vibe && chown vscode:vscode /home/vscode/.vibe
+# Ensure .vibe (Vibe state) and .vscode-server (VS Code remote server)
+# exist with correct ownership: podman copies image content AND ownership
+# into a fresh named volume mounted over these paths, so pre-creating the
+# directory here makes the volume usable by the vscode user immediately.
+RUN mkdir -p /home/vscode/.vibe /home/vscode/.vscode-server \
+    && chown vscode:vscode /home/vscode/.vibe /home/vscode/.vscode-server
 
 # Startup security posture check - shipped IN the image so every project
 # using this sandbox gets the current check without copying files.
 # Kept last: it changes more often than the layers above, so the build
 # cache stays effective.
-COPY security-check.sh /usr/local/bin/sandbox-security-check
-RUN chmod 0755 /usr/local/bin/sandbox-security-check
+COPY --chmod=0755 security-check.sh /usr/local/bin/sandbox-security-check
 
 USER vscode

@@ -28,6 +28,19 @@ cd "$(dirname "$0")"
 
 BUILDS_LOG="image/builds.log"
 
+# Advisory lint: shellcheck findings never block a build, but they are
+# shown when the tool is available (it is not bundled - install it via
+# your package manager if you want this check).
+if command -v shellcheck >/dev/null 2>&1; then
+    echo "== shellcheck =="
+    if shellcheck image/security-check.sh build.sh; then
+        echo "  clean"
+    else
+        echo "  (findings above - build continues; the hook is advisory)"
+    fi
+    echo
+fi
+
 log_build() { # <image-name> <tag> <full-image-id>
     local ts git_head
     ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)

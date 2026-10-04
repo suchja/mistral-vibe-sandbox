@@ -42,6 +42,9 @@ services:
       # not share one credentials/agent store. (Cost: one vibe login per
       # project. Benefit: safe concurrency and per-project isolation.)
       - vibe-home:/home/vscode/.vibe
+      # VS Code remote server on a volume: survives rebuilds instead of
+      # reinstalling at every container recreation.
+      - vscode-server:/home/vscode/.vscode-server
       # Host git identity, read-only. ${USERPROFILE} is empty on macOS/Linux,
       # ${HOME} is empty on Windows - one of the two always applies.
       - ${HOME}${USERPROFILE}/.vibe-gitconfig:/home/vscode/.gitconfig:ro
@@ -66,6 +69,17 @@ services:
     # inside the image, and the process itself drops to an unprivileged
     # user at startup.
     image: mistral-vibe-sandbox-proxy:latest
+    # Squid starts as root and drops to its internal user; that needs
+    # only these capabilities. Everything else - incl. net_raw and
+    # sys_chroot from the default set - is dropped.
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETUID
+      - SETGID
+      - CHOWN
+      - DAC_OVERRIDE
+    restart: unless-stopped
     networks:
       - sandbox
       - egress
@@ -81,3 +95,5 @@ volumes:
   # Per-project volume name derived from the compose project name.
   vibe-home:
     name: ${COMPOSE_PROJECT_NAME}-vibe-home
+  vscode-server:
+    name: ${COMPOSE_PROJECT_NAME}-vscode-server
