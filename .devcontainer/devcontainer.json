@@ -15,7 +15,14 @@
   // Keep that in a named volume so it survives container rebuilds, independent
   // of the bind-mounted workspace.
   "mounts": [
-    "source=mistral-vibe-home,target=/home/vscode/.vibe,type=volume"
+    "source=mistral-vibe-home,target=/home/vscode/.vibe,type=volume",
+    // Reuse the host's git identity instead of re-configuring it per rebuild.
+    // Read-only: the container can read git config but never modify it -
+    // changes are made on the host and picked up on the next start.
+    // NOTE: requires an existing host ~/.gitconfig - if the file is missing,
+    // Docker creates a directory at that path instead of failing;
+    // Podman refuses the mount outright with a statfs error.
+    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.gitconfig,target=/home/vscode/.gitconfig,type=bind,readonly"
   ],
 
   "remoteUser": "vscode",
