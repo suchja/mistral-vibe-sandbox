@@ -1,29 +1,37 @@
 {
-  "name": "mistral-vibe",
+  "name": "mistral-vibe-sandbox",
 
   // Compose-based setup: two services on two networks.
   //   - "vibe" (this devcontainer): only on the internal "sandbox" network,
   //     so it has NO direct route to the host, the LAN, or the internet.
   //   - "proxy" (squid): on both "sandbox" and "egress", so it is the vibe
-  //     container's only way out. proxy/squid.conf denies all destinations
-  //     in private/reserved ranges, which covers the host (host.docker.internal)
-  //     and the LAN, while still allowing the public internet for research.
+  //     container's only way out. Its image denies all destinations in
+  //     private/reserved ranges, which covers the host (host.docker.internal
+  //     / host.containers.internal) and the LAN, while still allowing the
+  //     public internet for research.
+  //
+  // This folder is the TEMPLATE: copy devcontainer.json + compose.yaml into
+  // any project's .devcontainer/ to give it the same sandbox. Both files are
+  // project-agnostic (fixed workspace path /workspaces/project). The two
+  // images they reference are built by the sandbox toolkit repo (./build.sh).
   "dockerComposeFile": "compose.yaml",
   "service": "vibe",
   "shutdownAction": "stopCompose",
 
-  "workspaceFolder": "/workspaces/MistralVibeBox-FirstTry",
+  "workspaceFolder": "/workspaces/project",
 
   "remoteUser": "vscode",
 
   "postCreateCommand": "mkdir -p /home/vscode/.vibe && chown -R vscode:vscode /home/vscode/.vibe && vibe --version",
 
-  // Runs on EVERY container start (postCreateCommand only runs at
-  // creation/rebuild). Verifies the sandbox posture - capabilities,
-  // no-new-privileges, network isolation, resource limits, mounts, and
-  // proxy behavior - and exits non-zero if a security property is
-  // violated, so VS Code surfaces an error instead of a silent degrade.
-  "postStartCommand": "bash ${containerWorkspaceFolder}/.devcontainer/security-check.sh",
+  // The security posture check ships inside the runtime image, so every
+  // project using this template runs the current check without copying
+  // files. Runs on EVERY container start (postCreateCommand only runs at
+  // creation/rebuild). Verifies capabilities, no-new-privileges, network
+  // isolation, resource limits, mounts, and proxy behavior; exits
+  // non-zero if a security property is violated, so VS Code surfaces an
+  // error instead of a silent degrade.
+  "postStartCommand": "sandbox-security-check",
 
   "customizations": {
     "vscode": {

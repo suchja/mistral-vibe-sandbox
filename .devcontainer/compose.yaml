@@ -1,8 +1,10 @@
 services:
   vibe:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    # Prebuilt runtime image - see build.sh in the sandbox toolkit repo.
+    # NOT a build: line on purpose. If the image is missing, run
+    # ./build.sh there first; a clear error beats a stale local build
+    # silently diverging from the shared image.
+    image: mistral-vibe-sandbox:latest
     # Keep the devcontainer service alive; the image has no daemon.
     command: sleep infinity
     init: true
@@ -24,12 +26,15 @@ services:
       # variables (${localEnv:...}, ${localWorkspaceFolderBasename}, ...) do
       # NOT work in compose files.
       #
-      # Workspace bind mount. Static target: the source is relative, so the
-      # repo root is mounted correctly wherever it is checked out; only the
-      # in-container path is fixed.
-      - ..:/workspaces/MistralVibeBox-FirstTry
-      # Named volume for Vibe state/credentials (reuses the existing volume).
-      - mistral-vibe-home:/home/vscode/.vibe
+      # Workspace bind mount at the FIXED path /workspaces/project: the
+      # fixed target is what makes this template project-agnostic - no
+      # per-project substitution is needed when copying it into a project.
+      - ..:/workspaces/project
+      # Vibe state/credentials on a per-project named volume. Interpolated
+      # from the compose project name, so concurrent project sandboxes do
+      # not share one credentials/agent store. (Cost: one vibe login per
+      # project. Benefit: safe concurrency and per-project isolation.)
+      - vibe-home:/home/vscode/.vibe
       # Host git identity, read-only. ${USERPROFILE} is empty on macOS/Linux,
       # ${HOME} is empty on Windows - one of the two always applies.
       - ${HOME}${USERPROFILE}/.gitconfig:/home/vscode/.gitconfig:ro
@@ -45,16 +50,15 @@ services:
       - sandbox
 
   proxy:
-    image: ubuntu/squid:latest
-    volumes:
-      - ./proxy/squid.conf:/etc/squid/squid.conf:ro
-    # NOTE: deliberately NOT hardened with cap_drop/no-new-privileges.
-    # Squid starts as root and drops to its internal 'proxy' user via
-    # setuid/setgid at startup, which requires CAP_SETUID/CAP_SETGID -
-    # dropping all capabilities makes squid exit immediately. The proxy
-    # is still contained: no published ports, reachable only from the
-    # sandbox network, config mounted read-only, and the process itself
-    # drops to the unprivileged 'proxy' user at startup.
+    # Prebuilt proxy image - squid with the hardened config baked in.
+    # Deliberately NOT hardened with cap_drop/no-new-privileges: squid
+    # starts as root and drops to its internal 'proxy' user via
+    # setuid/setgid, which requires capabilities - dropping them makes
+    # squid exit immediately. The proxy is still contained: no published
+    # ports, reachable only from the sandbox network, config read-only
+    # inside the image, and the process itself drops to an unprivileged
+    # user at startup.
+    image: mistral-vibe-sandbox-proxy:latest
     networks:
       - sandbox
       - egress
@@ -67,6 +71,6 @@ networks:
   egress:
 
 volumes:
-  mistral-vibe-home:
-    external: true
-    name: mistral-vibe-home
+  # Per-project volume name derived from the compose project name.
+  vibe-home:
+    name: ${COMPOSE_PROJECT_NAME}-vibe-home

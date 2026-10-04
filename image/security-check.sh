@@ -1,14 +1,19 @@
 #!/usr/bin/env bash
 # Sandbox security posture check for the Mistral Vibe devcontainer.
 #
-# Runs on EVERY container start (postStartCommand in devcontainer.json).
-# Security properties that MUST hold are hard failures: if any fails, this
-# script exits non-zero and VS Code surfaces an error - do not treat the
-# sandbox as isolated until the failure is understood.
+# Ships INSIDE the runtime image as /usr/local/bin/sandbox-security-check
+# and runs on EVERY container start (postStartCommand in devcontainer.json)
+# - so every project using the sandbox gets the current check without
+# copying files. Security properties that MUST hold are hard failures: if
+# any fails, this script exits non-zero and VS Code surfaces an error -
+# do not treat the sandbox as isolated until the failure is understood.
 #
 # Design notes:
 # - Kernel-level properties (caps, routes, mounts, identity) are checked
 #   exactly - they are deterministic per start.
+# - The workspace is expected at the fixed path /workspaces/project: the
+#   devcontainer template mounts every project there, which is what makes
+#   it project-agnostic.
 # - Resource limits are checked for EXISTENCE, not exact values, so
 #   right-sizing compose.yaml does not break this script.
 # - A dead/unreachable proxy is a WARNING, not a failure: the sandbox has
@@ -22,6 +27,8 @@ PASS=0; FAIL=0; WARN=0
 ok()   { PASS=$((PASS+1)); printf '  [ok]   %s\n' "$1"; }
 bad()  { FAIL=$((FAIL+1)); printf '  [FAIL] %s\n' "$1"; }
 warn() { WARN=$((WARN+1)); printf '  [warn] %s\n' "$1"; }
+
+WORKSPACE_DIR="/workspaces/project"
 
 echo "== Mistral Vibe sandbox: security posture check =="
 
@@ -95,12 +102,10 @@ case "$mnt_opts" in
     *)    bad "git identity not mounted read-only (opts: '${mnt_opts:-missing}')" ;;
 esac
 
-script_dir=$(cd "$(dirname "$0")" && pwd)
-workspace_dir=$(dirname "$script_dir")
-ws_opts=$(awk -v ws="$workspace_dir" '$2==ws {print $4}' /proc/mounts)
+ws_opts=$(awk -v ws="$WORKSPACE_DIR" '$2==ws {print $4}' /proc/mounts)
 case "$ws_opts" in
-    rw,*) ok "workspace mounted read-write at $workspace_dir (intended)" ;;
-    *)    bad "workspace mount not found at $workspace_dir" ;;
+    rw,*) ok "workspace mounted read-write at $WORKSPACE_DIR (intended)" ;;
+    *)    bad "workspace mount not found at $WORKSPACE_DIR" ;;
 esac
 
 vibe_opts=$(awk '$2=="/home/vscode/.vibe" {print $1}' /proc/mounts)

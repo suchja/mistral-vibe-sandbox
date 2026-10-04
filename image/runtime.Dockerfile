@@ -21,10 +21,17 @@ RUN apt-get update \
 
 # Mistral Vibe CLI (https://github.com/mistralai/mistral-vibe) - installed
 # system-wide; per-user state/config lives under $HOME/.vibe, which is
-# mounted from a named volume by devcontainer.json so it survives rebuilds.
+# mounted from a named volume by the devcontainer so it survives rebuilds.
 RUN pip install --no-cache-dir mistral-vibe
 
 # Ensure .vibe directory exists and has correct permissions
 RUN mkdir -p /home/vscode/.vibe && chown vscode:vscode /home/vscode/.vibe
+
+# Startup security posture check - shipped IN the image so every project
+# using this sandbox gets the current check without copying files.
+# Kept last: it changes more often than the layers above, so the build
+# cache stays effective.
+COPY security-check.sh /usr/local/bin/sandbox-security-check
+RUN chmod 0755 /usr/local/bin/sandbox-security-check
 
 USER vscode
