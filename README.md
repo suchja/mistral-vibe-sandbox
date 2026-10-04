@@ -17,7 +17,7 @@ A hardened [Mistral Vibe CLI](https://github.com/mistralai/mistral-vibe) devcont
    ```bash
    ./build.sh
    ```
-   This produces `mistral-vibe-sandbox` (runtime: Python 3.12, git, curl, ripgrep, jq, procps, iproute2, the Vibe CLI, and the security check) and `mistral-vibe-sandbox-proxy` (squid with the hardened config baked in), each tagged `:latest` plus a dated tag for rollback.
+   This produces `mistral-vibe-sandbox` (runtime: Python 3.12, git, curl, ripgrep, jq, procps, iproute2, the Vibe CLI, and the security check) and `mistral-vibe-sandbox-proxy` (squid with the hardened config baked in). Every build pulls the current base images and installs the latest Vibe CLI (`--pull --no-cache`, so updates arrive at every build at the cost of not using the layer cache). Each image gets `:latest` (what the projects' compose.yaml references) plus a structured tag `<date>-<short image id>` identifying the exact build; every build is also recorded in `image/builds.log` (per-host, gitignored).
 2. Generate the identity-only gitconfig the sandbox mounts (`~/.vibe-gitconfig` - never your full `~/.gitconfig`, which may contain credentials, tokens, or credential-helper config readable by the agent):
    ```bash
    git config --global user.name "Your Name"
@@ -52,10 +52,11 @@ The agent runs with write access to the workspace, and the workspace contains `.
 
 - Changes to `image/security-check.sh` or `image/squid.conf` ship via `./build.sh`; all projects pick them up on their next container start. No per-project copying.
 - Changes to `devcontainer.json` or `compose.yaml` (mounts, limits, wiring) are structural and rare; copy them into projects again when they change.
-- To roll back an image change: retag the dated version back to `latest` and restart the containers:
+- To roll back an image change: find the exact build in `image/builds.log`, retag it back to `latest`, and restart the containers:
   ```bash
-  podman tag mistral-vibe-sandbox:2026-10-04 mistral-vibe-sandbox:latest
+  podman tag mistral-vibe-sandbox:2026-10-04-a1b2c3d4e5f6 mistral-vibe-sandbox:latest
   ```
+  The structured tag (date plus short image ID) identifies the exact build - same-day rebuilds no longer collide, and identical content always produces the same tag.
 
 ## Manual start (outside VS Code)
 
@@ -85,13 +86,14 @@ sandbox-security-check
 | `image/proxy.Dockerfile` | Proxy image: stock squid plus baked-in hardened config |
 | `image/squid.conf` | Egress rules: internet allowed, private ranges denied |
 | `image/security-check.sh` | Startup security posture check (single source of truth) |
-| `build.sh` | Builds and tags both images |
+| `build.sh` | Builds and tags both images (`--pull --no-cache`, structured tags, build log) |
 | `.devcontainer/devcontainer.json` | Template (copy into projects) |
 | `.devcontainer/compose.yaml` | Template (copy into projects) |
 
 ## Notes
 
 - The `.vibe` directory (Vibe state, credentials, agents) is persisted per project via a named volume derived from the compose project name. Concurrent project sandboxes do not share one credentials store; the cost is a one-time Vibe login per project.
+- `image/builds.log` is a per-host build record (UTC timestamp, structured tag, full image ID, git HEAD at build time). It is deliberately gitignored: it tracks what was built on this machine, not the toolkit's source of truth.
 - The proxy service intentionally keeps default capabilities: squid needs `setuid`/`setgid` to drop to its internal user, and dropping all capabilities makes it exit immediately. It is still contained - no published ports, reachable only from the sandbox network, config baked into the image read-only.
 - With Podman, host/LAN verification inside the sandbox uses `host.containers.internal`.
 - Resource limits (4g memory / 2 CPUs / 256 PIDs) are right-sized for a podman machine with 2+ GB. The security check asserts limits exist, not their exact values, so right-sizing does not break it.

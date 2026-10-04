@@ -7,3 +7,6 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+
+# Per-host build record (timestamps, image IDs, git HEADs)
+image/builds.log
