@@ -10,6 +10,7 @@ A pre-configured development environment for [Mistral Vibe CLI](https://github.c
 - **Persistent state**: Vibe config, credentials, logs, and agents survive container rebuilds via a named Docker volume
 - **Git** installed for repo status access
 - **Sandbox hardening**: all Linux capabilities dropped, `no-new-privileges` set, and memory/CPU/PID limits applied so the container can only touch the bind-mounted project folder and can't starve the host
+- **Network egress control**: the sandbox container sits on an internal-only Docker network with no direct route to the host, LAN, or internet. All traffic exits through a hardened Squid proxy (`ubuntu/squid`) that forwards to the public internet but denies any destination in private/reserved ranges — so web research and package installs work, but reaching your machine or local network is blocked
 
 ## Quick Start
 
@@ -20,15 +21,11 @@ A pre-configured development environment for [Mistral Vibe CLI](https://github.c
 
 ## Manual Build (Optional)
 
-```bash
-# Build the image
-docker build -t mistral-vibe ./.devcontainer
+The setup is compose-based; to run it outside VS Code:
 
-# Run the container
-docker run -it --rm \
-  -v "$(pwd):/workspaces/mistral-vibe" \
-  -v "mistral-vibe-home:/home/vscode/.vibe" \
-  mistral-vibe
+```bash
+docker compose -f .devcontainer/compose.yaml up -d --build
+docker compose -f .devcontainer/compose.yaml exec vibe bash
 ```
 
 ## Configuration Files
@@ -36,9 +33,15 @@ docker run -it --rm \
 | File | Description |
 |------|-------------|
 | `.devcontainer/Dockerfile` | Container image definition |
-| `.devcontainer/devcontainer.json` | VS Code Dev Containers settings |
+| `.devcontainer/devcontainer.json` | VS Code Dev Containers settings (compose wiring) |
+| `.devcontainer/compose.yaml` | Services, mounts, resource limits, and networks |
+| `.devcontainer/proxy/squid.conf` | Egress rules: internet allowed, private ranges denied |
 
 ## Notes
 
-- The `.vibe` directory in the container home is persisted via a Docker volume, independent of the workspace bind mount.
+- The `.vibe` directory in the container home is persisted via a named Docker volume, independent of the workspace bind mount.
 - The workspace is bind-mounted from your host machine, so file changes are immediate and persistent.
+- Git identity is taken read-only from the host's `~/.gitconfig`; create it on the host (`git config --global user.name/user.email`) before the first build. With Docker, a missing file would be silently replaced by a directory; Podman refuses the mount instead.
+- All container network traffic goes through the `proxy` service (`HTTP_PROXY`/`HTTPS_PROXY` env). Verify the egress rules from inside the container:
+  - `curl -sS -o /dev/null -w '%{http_code}\n' https://example.com` → `200`
+  - `curl -sS --max-time 5 http://host.docker.internal` → refused (403 from the proxy)

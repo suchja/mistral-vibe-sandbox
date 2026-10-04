@@ -1,0 +1,72 @@
+services:
+  vibe:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Keep the devcontainer service alive; the image has no daemon.
+    command: sleep infinity
+    init: true
+    environment:
+      # All container egress goes through the proxy service; the sandbox
+      # network is internal-only, so this is the ONLY way out.
+      HTTP_PROXY: http://proxy:3128
+      http_proxy: http://proxy:3128
+      HTTPS_PROXY: http://proxy:3128
+      https_proxy: http://proxy:3128
+      NO_PROXY: localhost,127.0.0.1,proxy
+      no_proxy: localhost,127.0.0.1,proxy
+    volumes:
+      # All vibe-container mounts live here - single source of truth, and the
+      # compose file stays valid when run standalone (podman compose up).
+      # Sources are relative to this compose file (so they always point at
+      # the repo root) or use compose's own env interpolation (${HOME} is
+      # read from the host shell that starts compose). Devcontainer-style
+      # variables (${localEnv:...}, ${localWorkspaceFolderBasename}, ...) do
+      # NOT work in compose files.
+      #
+      # Workspace bind mount. Static target: the source is relative, so the
+      # repo root is mounted correctly wherever it is checked out; only the
+      # in-container path is fixed.
+      - ..:/workspaces/MistralVibeBox-FirstTry
+      # Named volume for Vibe state/credentials (reuses the existing volume).
+      - mistral-vibe-home:/home/vscode/.vibe
+      # Host git identity, read-only. ${USERPROFILE} is empty on macOS/Linux,
+      # ${HOME} is empty on Windows - one of the two always applies.
+      - ${HOME}${USERPROFILE}/.gitconfig:/home/vscode/.gitconfig:ro
+    # Sandbox hardening (moved from runArgs, which compose ignores).
+    cap_drop:
+      - ALL
+    security_opt:
+      - "no-new-privileges"
+    mem_limit: 4g
+    cpus: 2.0
+    pids_limit: 256
+    networks:
+      - sandbox
+
+  proxy:
+    image: ubuntu/squid:latest
+    volumes:
+      - ./proxy/squid.conf:/etc/squid/squid.conf:ro
+    # NOTE: deliberately NOT hardened with cap_drop/no-new-privileges.
+    # Squid starts as root and drops to its internal 'proxy' user via
+    # setuid/setgid at startup, which requires CAP_SETUID/CAP_SETGID -
+    # dropping all capabilities makes squid exit immediately. The proxy
+    # is still contained: no published ports, reachable only from the
+    # sandbox network, config mounted read-only, and the process itself
+    # drops to the unprivileged 'proxy' user at startup.
+    networks:
+      - sandbox
+      - egress
+
+networks:
+  # Internal-only: containers on this network have no direct route to the
+  # host, the LAN, or the internet - only to each other (i.e. the proxy).
+  sandbox:
+    internal: true
+  egress:
+
+volumes:
+  mistral-vibe-home:
+    external: true
+    name: mistral-vibe-home

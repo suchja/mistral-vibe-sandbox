@@ -1,41 +1,20 @@
 {
   "name": "mistral-vibe",
-  "build": {
-    "dockerfile": "Dockerfile"
-  },
 
-  // Mount the folder that contains this .devcontainer directory as the workspace,
-  // regardless of where it's checked out on the host.
-  // NOTE: no "consistency" option here - it's a Docker-Desktop-only bind mount
-  // hint on macOS and Podman rejects it.
-  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/${localWorkspaceFolderBasename},type=bind",
-  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  // Compose-based setup: two services on two networks.
+  //   - "vibe" (this devcontainer): only on the internal "sandbox" network,
+  //     so it has NO direct route to the host, the LAN, or the internet.
+  //   - "proxy" (squid): on both "sandbox" and "egress", so it is the vibe
+  //     container's only way out. proxy/squid.conf denies all destinations
+  //     in private/reserved ranges, which covers the host (host.docker.internal)
+  //     and the LAN, while still allowing the public internet for research.
+  "dockerComposeFile": "compose.yaml",
+  "service": "vibe",
+  "shutdownAction": "stopCompose",
 
-  // Vibe stores its config, credentials, logs, agents, etc. under $HOME/.vibe.
-  // Keep that in a named volume so it survives container rebuilds, independent
-  // of the bind-mounted workspace.
-  "mounts": [
-    "source=mistral-vibe-home,target=/home/vscode/.vibe,type=volume",
-    // Reuse the host's git identity instead of re-configuring it per rebuild.
-    // Read-only: the container can read git config but never modify it -
-    // changes are made on the host and picked up on the next start.
-    // NOTE: requires an existing host ~/.gitconfig - if the file is missing,
-    // Docker creates a directory at that path instead of failing;
-    // Podman refuses the mount outright with a statfs error.
-    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.gitconfig,target=/home/vscode/.gitconfig,type=bind,readonly"
-  ],
+  "workspaceFolder": "/workspaces/MistralVibeBox-FirstTry",
 
   "remoteUser": "vscode",
-
-  // Sandbox hardening: no Linux capabilities, no privilege escalation,
-  // and resource limits so a runaway agent process can't starve the host.
-  "runArgs": [
-    "--cap-drop=ALL",
-    "--security-opt=no-new-privileges",
-    "--memory=4g",
-    "--cpus=2",
-    "--pids-limit=256"
-  ],
 
   "postCreateCommand": "mkdir -p /home/vscode/.vibe && chown -R vscode:vscode /home/vscode/.vibe && vibe --version",
 
