@@ -216,10 +216,30 @@ else
     warn "isolation still holds (no default route): fail-safe, not fail-open"
 fi
 
-if curl -s --noproxy '*' --max-time 3 -o /dev/null http://host.containers.internal/ 2>/dev/null; then
-    bad "DIRECT access to a private address succeeded - network isolation broken"
+# Direct host access must be impossible. Probe with REAL TCP connects to
+# host.containers.internal on common service ports and fail if ANY connect
+# succeeds. A plain curl here would treat "reachable but nothing listening"
+# (connection refused) as "blocked" and hide a porous boundary; a completed
+# connect means a host service (e.g. sshd) is reachable - isolation broken.
+# Unreachable ports fail instantly (no route), so this adds no start delay
+# in the healthy case.
+host_ips=$(getent hosts host.containers.internal 2>/dev/null | awk '{print $1}' | sort -u)
+if [ -z "$host_ips" ]; then
+    warn "host.containers.internal does not resolve - cannot probe direct host access on this platform"
 else
-    ok "direct access to private ranges blocked at the routing layer"
+    PROBE_PORTS="22 80 443"
+    direct_connects=0
+    for ip in $host_ips; do
+        for port in $PROBE_PORTS; do
+            if timeout 2 bash -c "exec 3<>/dev/tcp/${ip}/${port}" 2>/dev/null; then
+                bad "direct TCP connect to ${ip}:${port} succeeded - host is reachable, network isolation broken"
+                direct_connects=$((direct_connects+1))
+            fi
+        done
+    done
+    if [ "$direct_connects" -eq 0 ]; then
+        ok "no direct TCP path to the host (host.containers.internal probed on ports $(echo $PROBE_PORTS | tr ' ' '/'))"
+    fi
 fi
 
 echo "== $PASS passed, $FAIL failed, $WARN warning(s) =="
