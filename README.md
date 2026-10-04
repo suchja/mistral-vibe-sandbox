@@ -5,6 +5,7 @@ A hardened [Mistral Vibe CLI](https://github.com/mistralai/mistral-vibe) devcont
 ## What the sandbox enforces
 
 - **Filesystem**: only the project folder is mounted (read-write); git identity comes from the host's `~/.gitconfig`, read-only; Vibe state lives on a per-project named volume
+- **Configuration integrity**: the sandbox's own `.devcontainer` folder is shadow-mounted read-only into the container, so the agent cannot rewrite the files that define the sandbox (compose.yaml, devcontainer.json) and have the change applied on the next restart/rebuild. The startup check additionally fails on any mount outside the expected allowlist and on a competing `devcontainer.json` in the workspace root
 - **Kernel**: all Linux capabilities dropped, `no-new-privileges`, non-root user (`vscode`), memory/CPU/PID limits
 - **Network**: the sandbox sits on an internal-only Docker network with no route to the host, the LAN, or the internet. All egress goes through a hardened Squid proxy that forwards to the public internet but denies any destination in private/reserved ranges
 - **Startup verification**: a security posture check runs on every container start and fails the start loudly if any property is violated (see below)
@@ -37,7 +38,11 @@ Copy exactly two files from this repo's `.devcontainer/` into the project's `.de
 
 Both are project-agnostic (the workspace is always mounted at `/workspaces/project`). Then open the project in VS Code and choose **Reopen in Container**.
 
-This repo itself uses the same two files - every change to the template is validated here first.
+This repo itself uses the same two files - every change to the template is validated here first. Note that with the read-only shadow mount active, `.devcontainer/` cannot be edited from inside the sandbox; make template changes on the host and reopen the container.
+
+### Why the read-only template mount matters
+
+The agent runs with write access to the workspace, and the workspace contains `.devcontainer/` - the very files that define the sandbox. Without the ro shadow mount, a modified `compose.yaml` (e.g. with `- /:/host` added) or `devcontainer.json` (e.g. without the security check) would silently take effect on the next restart or rebuild. The shadow mount makes the template immutable from inside; the startup check enforces it (`.devcontainer` must be mounted read-only) and also fails if a `devcontainer.json` appears in the workspace root - VS Code prefers `.devcontainer/devcontainer.json`, but only other tools resolve differently, so ambiguity is treated as a violation.
 
 ## Updating the sandbox
 

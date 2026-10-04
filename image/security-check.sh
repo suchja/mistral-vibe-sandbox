@@ -14,6 +14,10 @@
 # - The workspace is expected at the fixed path /workspaces/project: the
 #   devcontainer template mounts every project there, which is what makes
 #   it project-agnostic.
+# - The sandbox's own configuration (.devcontainer) must be mounted
+#   read-only, no competing devcontainer.json may sit in the workspace
+#   root, and every mount must be on the allowlist: the agent must not be
+#   able to rewrite or bypass the sandbox definition.
 # - Resource limits are checked for EXISTENCE, not exact values, so
 #   right-sizing compose.yaml does not break this script.
 # - A dead/unreachable proxy is a WARNING, not a failure: the sandbox has
@@ -113,6 +117,68 @@ if [ -n "$vibe_opts" ]; then
     ok "vibe state on a named volume (device: $vibe_opts)"
 else
     warn "vibe state volume not found - state will not survive rebuilds"
+fi
+
+# The sandbox's own configuration lives in the writable workspace. Without
+# a read-only shadow mount, the agent could rewrite compose.yaml /
+# devcontainer.json (add host mounts, remove this check from postStartCommand)
+# and have it applied on the next restart/rebuild.
+tmpl_opts=$(awk '$2=="'"$WORKSPACE_DIR"'/.devcontainer" {print $4}' /proc/mounts)
+case "$tmpl_opts" in
+    ro,*) ok "sandbox template (.devcontainer) mounted read-only" ;;
+    *)    bad "sandbox template (.devcontainer) not mounted read-only (opts: '${tmpl_opts:-missing}') - the agent could rewrite the sandbox configuration" ;;
+esac
+
+# A devcontainer.json in the workspace ROOT would compete with the sandbox
+# template. VS Code prefers .devcontainer/devcontainer.json, but only while
+# it exists - and other tools (Codespaces, JetBrains, CLI) resolve
+# differently. In a template-consumed project a root file is always wrong:
+# fail on ambiguity rather than trust precedence.
+rogue_found=0
+for rogue in "$WORKSPACE_DIR/.devcontainer.json" "$WORKSPACE_DIR/.devcontainer.jsonc"; do
+    if [ -e "$rogue" ]; then
+        bad "competing devcontainer config at $rogue - delete it (the sandbox config is .devcontainer/devcontainer.json)"
+        rogue_found=1
+    fi
+done
+if [ "$rogue_found" -eq 0 ]; then
+    ok "no competing devcontainer config in the workspace root"
+fi
+
+# Mount allowlist: every mount must be runtime infrastructure or one of the
+# four expected mounts. A tampered compose.yaml could otherwise mount the
+# host root (or a container engine socket) somewhere unnoticed - the checks
+# above only assert the expected mounts exist, not that nothing else does.
+# Filter out system/pseudo filesystems and podman/devcontainer
+# infrastructure first; what remains must be on the allowlist.
+is_expected_mount() {
+    case "$1" in
+        "$WORKSPACE_DIR"|"$WORKSPACE_DIR/.devcontainer"|\
+/home/vscode/.gitconfig|/home/vscode/.vibe|\
+/vscode|/etc/hosts|/etc/hostname|/etc/resolv.conf|/etc/localtime)
+            return 0 ;;
+        *)  return 1 ;;
+    esac
+}
+
+unexpected=0
+while IFS= read -r mnt; do
+    [ -z "$mnt" ] && continue
+    if ! is_expected_mount "$mnt"; then
+        bad "unexpected mount: $mnt - a host filesystem may be exposed; verify compose.yaml against the template"
+        unexpected=$((unexpected+1))
+    fi
+done < <(awk '
+    {
+        fs = $3; mnt = $2
+        if (fs ~ /^(proc|sysfs|devpts|devtmpfs|tmpfs|mqueue|cgroup|cgroup2|overlay|squashfs)$/) next
+        if (mnt == "/") next
+        if (mnt ~ /^\/(dev|proc|sys|run)(\/|$)/) next
+        print mnt
+    }' /proc/mounts | sort -u)
+
+if [ "$unexpected" -eq 0 ]; then
+    ok "no unexpected mounts (allowlist: workspace, template, gitconfig, vibe volume)"
 fi
 
 # --- Egress proxy (reachable with retries; its security behavior is hard) ---

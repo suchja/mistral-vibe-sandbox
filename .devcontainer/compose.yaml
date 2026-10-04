@@ -30,6 +30,13 @@ services:
       # fixed target is what makes this template project-agnostic - no
       # per-project substitution is needed when copying it into a project.
       - ..:/workspaces/project
+      # Read-only shadow mount of the sandbox's own configuration: the
+      # agent must never be able to rewrite compose.yaml / devcontainer.json
+      # (the files that define this sandbox) and have the change take effect
+      # on the next restart/rebuild. Listed after the parent mount so the
+      # deeper mount shadows it inside the container. Edit template files on
+      # the host, never from inside the sandbox.
+      - ../.devcontainer:/workspaces/project/.devcontainer:ro
       # Vibe state/credentials on a per-project named volume. Interpolated
       # from the compose project name, so concurrent project sandboxes do
       # not share one credentials/agent store. (Cost: one vibe login per
