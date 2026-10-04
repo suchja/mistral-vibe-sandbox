@@ -58,19 +58,24 @@ else
     ok "running as non-root user $(id -un) (uid $(id -u))"
 fi
 
-if [ -e /var/run/docker.sock ] || [ -e /run/podman.sock ]; then
-    bad "a container engine socket is mounted into the sandbox"
-else
+engine_sock=0
+for sock in /var/run/docker.sock /run/podman.sock /run/containerd/containerd.sock /run/crio/crio.sock; do
+    if [ -e "$sock" ]; then
+        bad "a container engine socket is mounted into the sandbox ($sock)"
+        engine_sock=1
+    fi
+done
+if [ "$engine_sock" -eq 0 ]; then
     ok "no container engine socket mounted"
 fi
 
 # --- Network isolation (hard) ---
 
-default_routes=$(ip route show default 2>/dev/null | wc -l)
+default_routes=$( (ip route show default; ip -6 route show default) 2>/dev/null | wc -l )
 if [ "$default_routes" -eq 0 ]; then
-    ok "no default route: no direct path to host, LAN, or internet"
+    ok "no default route (IPv4 or IPv6): no direct path to host, LAN, or internet"
 else
-    bad "default route exists: $(ip route show default)"
+    bad "default route exists: ($( (ip route show default; ip -6 route show default) 2>/dev/null | tr '\n' ';' ))"
 fi
 
 # --- Resource limits (hard: a limit must exist; actual value is reported) ---
@@ -216,29 +221,39 @@ else
     warn "isolation still holds (no default route): fail-safe, not fail-open"
 fi
 
-# Direct host access must be impossible. Probe with REAL TCP connects to
-# host.containers.internal on common service ports and fail if ANY connect
-# succeeds. A plain curl here would treat "reachable but nothing listening"
-# (connection refused) as "blocked" and hide a porous boundary; a completed
-# connect means a host service (e.g. sshd) is reachable - isolation broken.
-# Unreachable ports fail instantly (no route), so this adds no start delay
-# in the healthy case.
-host_ips=$(getent hosts host.containers.internal 2>/dev/null | awk '{print $1}' | sort -u)
-if [ -z "$host_ips" ]; then
-    warn "host.containers.internal does not resolve - cannot probe direct host access on this platform"
+# Direct host access must be impossible. Probe with REAL TCP connects on
+# common service ports and fail if ANY connect succeeds. A plain curl here
+# would treat "reachable but nothing listening" (connection refused) as
+# "blocked" and hide a porous boundary; a completed connect means a host
+# service (e.g. sshd) is reachable - isolation broken.
+#
+# Two targets:
+#   - host.containers.internal: the host as exposed by the container runtime
+#   - the resolv.conf nameserver: the internal network's bridge/gateway IP.
+#     The internal-only network still has an on-link gateway - on rootful
+#     Linux podman that IP IS the host, so a host service bound to 0.0.0.0
+#     (sshd, dev servers) would answer there. On podman machine it is only
+#     the VM (nothing listens) and the probe passes.
+# Unreachable ports fail instantly (no route); refused connects do not
+# count as exposure (no service to talk to) - so this adds no start delay
+# and no false positives in the healthy case.
+probe_ips=$( { getent hosts host.containers.internal 2>/dev/null | awk '{print $1}';
+               awk '/^nameserver/ {print $2}' /etc/resolv.conf; } | sort -u)
+if [ -z "$probe_ips" ]; then
+    warn "no host IPs to probe (host.containers.internal/nameserver unavailable) - cannot verify direct host access on this platform"
 else
     PROBE_PORTS="22 80 443"
     direct_connects=0
-    for ip in $host_ips; do
+    for ip in $probe_ips; do
         for port in $PROBE_PORTS; do
             if timeout 2 bash -c "exec 3<>/dev/tcp/${ip}/${port}" 2>/dev/null; then
-                bad "direct TCP connect to ${ip}:${port} succeeded - host is reachable, network isolation broken"
+                bad "direct TCP connect to ${ip}:${port} succeeded - host/gateway is reachable, network isolation broken"
                 direct_connects=$((direct_connects+1))
             fi
         done
     done
     if [ "$direct_connects" -eq 0 ]; then
-        ok "no direct TCP path to the host (host.containers.internal probed on ports $(echo $PROBE_PORTS | tr ' ' '/'))"
+        ok "no direct TCP path to the host or network gateway (probed on ports $(echo $PROBE_PORTS | tr ' ' '/'))"
     fi
 fi
 

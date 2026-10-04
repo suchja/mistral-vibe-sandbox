@@ -66,7 +66,7 @@ podman compose -f .devcontainer/compose.yaml exec vibe bash
 
 ## Startup Security Check
 
-On every container start, `/usr/local/bin/sandbox-security-check` (baked into the runtime image) runs via `postStartCommand` and verifies the sandbox posture: dropped capabilities, `no-new-privileges`, absence of a default route, presence of resource limits, read-only git identity, the workspace and volume mounts, proxy reachability, that the proxy denies private destinations, and that no direct TCP path to the host exists (real connect probes against `host.containers.internal`, not just a failed HTTP request).
+On every container start, `/usr/local/bin/sandbox-security-check` (baked into the runtime image) runs via `postStartCommand` and verifies the sandbox posture: dropped capabilities, `no-new-privileges`, absence of a default route (IPv4 or IPv6), presence of resource limits, read-only git identity, the workspace and volume mounts, proxy reachability, that the proxy denies private destinations, and that no direct TCP path to the host or the internal network gateway exists (real connect probes against `host.containers.internal` and the resolver/gateway IP, not just a failed HTTP request).
 
 - A **hard failure** makes the start command exit non-zero - VS Code shows an error. Do not treat the sandbox as isolated until the failure is understood.
 - A **warning** does not fail the start: a briefly unreachable proxy means no internet (fail-safe; the container has no route to the host or LAN either way).
