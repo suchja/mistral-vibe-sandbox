@@ -18,6 +18,13 @@
 
   "postCreateCommand": "mkdir -p /home/vscode/.vibe && chown -R vscode:vscode /home/vscode/.vibe && vibe --version",
 
+  // Runs on EVERY container start (postCreateCommand only runs at
+  // creation/rebuild). Verifies the sandbox posture - capabilities,
+  // no-new-privileges, network isolation, resource limits, mounts, and
+  // proxy behavior - and exits non-zero if a security property is
+  // violated, so VS Code surfaces an error instead of a silent degrade.
+  "postStartCommand": "bash ${containerWorkspaceFolder}/.devcontainer/security-check.sh",
+
   "customizations": {
     "vscode": {
       "extensions": [

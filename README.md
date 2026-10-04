@@ -36,6 +36,7 @@ docker compose -f .devcontainer/compose.yaml exec vibe bash
 | `.devcontainer/devcontainer.json` | VS Code Dev Containers settings (compose wiring) |
 | `.devcontainer/compose.yaml` | Services, mounts, resource limits, and networks |
 | `.devcontainer/proxy/squid.conf` | Egress rules: internet allowed, private ranges denied |
+| `.devcontainer/security-check.sh` | Startup security posture check (runs on every container start) |
 
 ## Notes
 
@@ -45,3 +46,16 @@ docker compose -f .devcontainer/compose.yaml exec vibe bash
 - All container network traffic goes through the `proxy` service (`HTTP_PROXY`/`HTTPS_PROXY` env). Verify the egress rules from inside the container:
   - `curl -sS -o /dev/null -w '%{http_code}\n' https://example.com` → `200`
   - `curl -sS --max-time 5 http://host.docker.internal` → refused (403 from the proxy)
+
+## Startup Security Check
+
+On every container start, `.devcontainer/security-check.sh` runs via `postStartCommand` and verifies the sandbox posture: dropped capabilities, `no-new-privileges`, absence of a default route, presence of resource limits, read-only git identity, the workspace and volume mounts, proxy reachability, and that the proxy denies private destinations.
+
+- A **hard failure** makes the start command exit non-zero - VS Code shows an error. Do not treat the sandbox as isolated until the failure is understood.
+- A **warning** does not fail the start: a briefly unreachable proxy means no internet (fail-safe; the container has no route to the host or LAN either way).
+
+You can also run it manually at any time:
+
+```bash
+bash .devcontainer/security-check.sh
+```
