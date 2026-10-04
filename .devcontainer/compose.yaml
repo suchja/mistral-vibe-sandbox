@@ -44,7 +44,7 @@ services:
       - vibe-home:/home/vscode/.vibe
       # Host git identity, read-only. ${USERPROFILE} is empty on macOS/Linux,
       # ${HOME} is empty on Windows - one of the two always applies.
-      - ${HOME}${USERPROFILE}/.gitconfig:/home/vscode/.gitconfig:ro
+      - ${HOME}${USERPROFILE}/.vibe-gitconfig:/home/vscode/.gitconfig:ro
     # Sandbox hardening (moved from runArgs, which compose ignores).
     cap_drop:
       - ALL

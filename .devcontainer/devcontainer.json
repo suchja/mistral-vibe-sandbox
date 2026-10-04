@@ -37,7 +37,10 @@
     "vscode": {
       "extensions": [
         "mistralai.mistral-vibe-code"
-      ]
+      ],
+      "settings": {
+        "remote.autoForwardPorts": false
+      }
     }
   }
 }

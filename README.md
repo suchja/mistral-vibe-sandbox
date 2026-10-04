@@ -4,10 +4,11 @@ A hardened [Mistral Vibe CLI](https://github.com/mistralai/mistral-vibe) devcont
 
 ## What the sandbox enforces
 
-- **Filesystem**: only the project folder is mounted (read-write); git identity comes from the host's `~/.gitconfig`, read-only; Vibe state lives on a per-project named volume
+- **Filesystem**: only the project folder is mounted (read-write); git identity comes from a host-generated, identity-only gitconfig (`~/.vibe-gitconfig`), read-only; Vibe state lives on a per-project named volume
 - **Configuration integrity**: the sandbox's own `.devcontainer` folder is shadow-mounted read-only into the container, so the agent cannot rewrite the files that define the sandbox (compose.yaml, devcontainer.json) and have the change applied on the next restart/rebuild. The startup check additionally fails on any mount outside the expected allowlist and on a competing `devcontainer.json` in the workspace root
 - **Kernel**: all Linux capabilities dropped, `no-new-privileges`, non-root user (`vscode`), memory/CPU/PID limits
 - **Network**: the sandbox sits on an internal-only Docker network with no route to the host, the LAN, or the internet. All egress goes through a hardened Squid proxy that forwards to the public internet but denies any destination in private/reserved ranges and restricts egress to research-relevant ports: plain HTTP on 80/443 and HTTPS (CONNECT) tunnels on 443 only - no SSH or arbitrary TCP tunnels out of the sandbox
+- **Ports**: VS Code's automatic port forwarding is disabled in the template (`remote.autoForwardPorts: false`) - services started inside the sandbox are not silently exposed on the host's localhost
 - **Startup verification**: a security posture check runs on every container start and fails the start loudly if any property is violated (see below)
 
 ## One-time setup on your machine
@@ -17,12 +18,15 @@ A hardened [Mistral Vibe CLI](https://github.com/mistralai/mistral-vibe) devcont
    ./build.sh
    ```
    This produces `mistral-vibe-sandbox` (runtime: Python 3.12, git, curl, ripgrep, jq, procps, iproute2, the Vibe CLI, and the security check) and `mistral-vibe-sandbox-proxy` (squid with the hardened config baked in), each tagged `:latest` plus a dated tag for rollback.
-2. Make sure a host `~/.gitconfig` exists (identity for commits):
+2. Generate the identity-only gitconfig the sandbox mounts (`~/.vibe-gitconfig` - never your full `~/.gitconfig`, which may contain credentials, tokens, or credential-helper config readable by the agent):
    ```bash
    git config --global user.name "Your Name"
    git config --global user.email "you@example.com"
+   printf '[user]\n\tname = %s\n\temail = %s\n' \
+     "$(git config --global user.name)" \
+     "$(git config --global user.email)" > ~/.vibe-gitconfig
    ```
-   With Docker, a missing file would be silently replaced by a directory; Podman refuses the mount instead.
+   If the file is missing, Podman refuses the mount at container start (a clear error) instead of silently mounting a directory.
 3. Configure VS Code to use podman if you have not already:
    ```json
    "dev.containers.dockerPath": "podman",
