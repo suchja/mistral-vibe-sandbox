@@ -1,5 +1,5 @@
 {
-  "name": "mistral-vibe-sandbox",
+  "name": "sandbox_${localWorkspaceFolderBasename}",
 
   // Compose-based setup: two services on two networks.
   //   - "vibe" (this devcontainer): only on the internal "sandbox" network,

@@ -61,13 +61,10 @@ services:
 
   proxy:
     # Prebuilt proxy image - squid with the hardened config baked in.
-    # Deliberately NOT hardened with cap_drop/no-new-privileges: squid
-    # starts as root and drops to its internal 'proxy' user via
-    # setuid/setgid, which requires capabilities - dropping them makes
-    # squid exit immediately. The proxy is still contained: no published
-    # ports, reachable only from the sandbox network, config read-only
-    # inside the image, and the process itself drops to an unprivileged
-    # user at startup.
+    # Contained: no published ports, reachable only from the sandbox
+    # network, config read-only inside the image, and the process drops
+    # to an unprivileged user at startup. Capabilities are reduced to
+    # the minimum squid needs - see cap_add below.
     image: mistral-vibe-sandbox-proxy:latest
     # Squid starts as root and drops to its internal user; that needs
     # only these capabilities. Everything else - incl. net_raw and

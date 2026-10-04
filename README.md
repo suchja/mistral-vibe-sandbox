@@ -42,6 +42,8 @@ Copy exactly two files from this repo's `.devcontainer/` into the project's `.de
 
 Both are project-agnostic (the workspace is always mounted at `/workspaces/project`). Then open the project in VS Code and choose **Reopen in Container**.
 
+The VS Code devcontainer indicator (bottom left) shows `sandbox_<folder name>` - the `name` property uses `${localWorkspaceFolderBasename}`, so you can immediately see which host project the sandbox is running on.
+
 This repo itself uses the same two files - every change to the template is validated here first. Note that with the read-only shadow mount active, `.devcontainer/` cannot be edited from inside the sandbox; make template changes on the host and reopen the container.
 
 ### Why the read-only template mount matters
@@ -94,6 +96,6 @@ sandbox-security-check
 
 - The `.vibe` directory (Vibe state, credentials, agents) is persisted per project via a named volume derived from the compose project name. Concurrent project sandboxes do not share one credentials store; the cost is a one-time Vibe login per project. Caveat: the volume name derives from the compose project name, which defaults to the project folder's name - two checkouts with the SAME folder name would share state. Rename one, or set an explicit compose project name (`-p <name>` / `COMPOSE_PROJECT_NAME`) when starting.
 - `image/builds.log` is a per-host build record (UTC timestamp, structured tag, full image ID, git HEAD at build time). It is deliberately gitignored: it tracks what was built on this machine, not the toolkit's source of truth.
-- The proxy service intentionally keeps default capabilities: squid needs `setuid`/`setgid` to drop to its internal user, and dropping all capabilities makes it exit immediately. It is still contained - no published ports, reachable only from the sandbox network, config baked into the image read-only.
+- The proxy service runs with a minimal capability set: `cap_drop: ALL` plus `SETUID`, `SETGID`, `CHOWN`, `DAC_OVERRIDE` - the minimum squid needs to start as root, chown its log files, and drop to its internal user. It also has `restart: unless-stopped`. It is still contained: no published ports, reachable only from the sandbox network, config baked into the image read-only.
 - With Podman, host/LAN verification inside the sandbox uses `host.containers.internal`.
 - Resource limits (4g memory / 2 CPUs / 256 PIDs) are right-sized for a podman machine with 2+ GB. The security check asserts limits exist, not their exact values, so right-sizing does not break it.
