@@ -14,8 +14,9 @@
 # - The workspace is expected at the fixed path /workspaces/project: the
 #   devcontainer template mounts every project there, which is what makes
 #   it project-agnostic.
-# - The sandbox's own configuration (.devcontainer) must be mounted
-#   read-only, no competing devcontainer.json may sit in the workspace
+# - The sandbox's own configuration (.devcontainer) must not be writable
+#   (read-only shadow mount, or a read-only workspace), no competing
+#   devcontainer.json may sit in the workspace
 #   root, and every mount must be on the allowlist: the agent must not be
 #   able to rewrite or bypass the sandbox definition.
 # - Resource limits are checked for EXISTENCE, not exact values, so
@@ -23,7 +24,7 @@
 # - A dead/unreachable proxy is a WARNING, not a failure: the sandbox has
 #   no default route, so a missing proxy means no egress at all
 #   (fail-safe), never access to the host or LAN (fail-open).
-
+#
 set -u
 
 PASS=0; FAIL=0; WARN=0
@@ -111,10 +112,15 @@ case "$mnt_opts" in
     *)    bad "git identity not mounted read-only (opts: '${mnt_opts:-missing}')" ;;
 esac
 
+# The workspace may be read-write (toolkit default) or read-only (a
+# per-project choice in compose.yaml: append :ro to the bind mount). Both
+# are valid postures - the check accepts either and reports which, so
+# right-sizing compose.yaml does not break this script.
 ws_opts=$(awk -v ws="$WORKSPACE_DIR" '$2==ws {print $4}' /proc/mounts)
 case "$ws_opts" in
-    rw,*) ok "workspace mounted read-write at $WORKSPACE_DIR (intended)" ;;
-    *)    bad "workspace mount not found at $WORKSPACE_DIR" ;;
+    rw|rw,*) ok "workspace mounted read-write at $WORKSPACE_DIR" ;;
+    ro|ro,*) ok "workspace mounted read-only at $WORKSPACE_DIR" ;;
+    *)    bad "workspace mount not found or not a plain rw/ro bind at $WORKSPACE_DIR (opts: '${ws_opts:-missing}')" ;;
 esac
 
 vibe_opts=$(awk '$2=="/home/vscode/.vibe" {print $1}' /proc/mounts)
@@ -124,14 +130,20 @@ else
     warn "vibe state volume not found - state will not survive rebuilds"
 fi
 
-# The sandbox's own configuration lives in the writable workspace. Without
-# a read-only shadow mount, the agent could rewrite compose.yaml /
-# devcontainer.json (add host mounts, remove this check from postStartCommand)
-# and have it applied on the next restart/rebuild.
+# The sandbox's own configuration lives in the workspace: either it is
+# shadow-mounted read-only, or the whole workspace is mounted read-only.
+# Anything else and the agent could rewrite compose.yaml / devcontainer.json
+# (add host mounts, remove this check from postStartCommand) and have the
+# change applied on the next restart/rebuild.
 tmpl_opts=$(awk '$2=="'"$WORKSPACE_DIR"'/.devcontainer" {print $4}' /proc/mounts)
 case "$tmpl_opts" in
-    ro,*) ok "sandbox template (.devcontainer) mounted read-only" ;;
-    *)    bad "sandbox template (.devcontainer) not mounted read-only (opts: '${tmpl_opts:-missing}') - the agent could rewrite the sandbox configuration" ;;
+    ro|ro,*) ok "sandbox template (.devcontainer) mounted read-only" ;;
+    rw|rw,*) bad "sandbox template (.devcontainer) mounted read-write (opts: '$tmpl_opts') - the agent could rewrite the sandbox configuration" ;;
+    *)  # No shadow mount at all: safe only if the workspace is read-only.
+        case "$ws_opts" in
+            ro|ro,*) ok "sandbox template (.devcontainer) read-only via read-only workspace" ;;
+            *)    bad "sandbox template (.devcontainer) not mounted read-only (opts: '${tmpl_opts:-missing}') - the agent could rewrite the sandbox configuration" ;;
+        esac ;;
 esac
 
 # A devcontainer.json in the workspace ROOT would compete with the sandbox
